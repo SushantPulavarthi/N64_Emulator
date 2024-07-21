@@ -1,3 +1,7 @@
+const std = @import("std");
+const print = std.debug.print;
+const assert = std.debug.assert;
+
 const COP0 = struct {
     pub var registers: [32]u32 = undefined;
     // Generate random number in range wired <= value <= 31 every time random is read
