@@ -2,8 +2,24 @@ const std = @import("std");
 const print = std.debug.print;
 const assert = std.debug.assert;
 
-const COP0 = struct {
-    pub var registers: [32]u32 = undefined;
+pub const Cop0 = struct {
+    registers: [32]u32 = undefined,
+
+    allocator: std.mem.allocator,
+
+    pub fn init(allocator: std.mem.Allocator) !Cop0 {
+        const registers = allocator.alloc(u32, 32);
+        errdefer allocator.free(registers);
+        return Cop0{
+            .registers = registers,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn deinit(self: *Cop0) void {
+        self.allocator.free(self.registers);
+    }
+
     // Generate random number in range wired <= value <= 31 every time random is read
     // Wired - lower bound for random value held in random
 
