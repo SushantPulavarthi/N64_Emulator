@@ -21,6 +21,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    // The SDL package doesn't work for Linux yet, so we rely on system
+    // packages for now.
+    exe.linkSystemLibrary("SDL2");
+    exe.linkLibC();
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

@@ -2,22 +2,90 @@ const std = @import("std");
 const print = std.debug.print;
 const assert = std.debug.assert;
 
-pub const Cop0 = struct {
-    registers: [32]u32 = undefined,
+const RANDOM_UPPER_LIMIT = 31;
 
-    allocator: std.mem.allocator,
+pub const Cp0 = struct {
+    registers: []u32 = undefined,
 
-    pub fn init(allocator: std.mem.Allocator) !Cop0 {
-        const registers = allocator.alloc(u32, 32);
-        errdefer allocator.free(registers);
-        return Cop0{
+    // 0-5 - index of TLB entry, TLB entry affected by TLB read or write index instructions
+    // 6-30 - Written and read as zeroes
+    // 31 - success(0)/failure(1) of TLB Probe instruction
+    reg_index: u32 = 0,
+    // Todo: might be better to model as
+    // u1: reg_index_p
+    // u6: reg_index_index
+
+    // 0-5 TLB Entry
+    // Bit 5 is readable and writable (ignored during TLB operations)
+    // Decrements as each instruction executes and range between Wired register and 31
+    // Upon cold reset set to value of upper bound
+    reg_random: u32 = 0,
+
+    // Used to rewrite TLB or check coincidence of TLB entry when addresses are converted
+    // If TLB exception occurs, address loaded onto these registers
+    reg_entry_hi: u32 = 0,
+    // Even Virtual Pages
+    reg_entry_lo0: u32 = 0,
+    // Odd Virtual Pages
+    reg_entry_lo1: u32 = 0,
+    reg_page_mask: u32 = 0,
+
+    // Boundary between wired and random entries of TLB
+    // 0-5 - Used in TLB operations
+    // Bit 5 ignored during TLB operations
+    reg_wired: u32 = 0,
+
+    // 0-7 - Processor Revision Number (Rev)
+    // 8-15 - Processor ID Number (Imp) - 0x0B
+    // 16-31 - 0
+    // In format yx
+    // y major revision number 7-4
+    // x minor revision number 3-0
+    reg_PRId: u32 = 0,
+
+    // Set various processor statuses
+    // 0-2 K0
+    // 3 CU
+    // 4-14 11001000110
+    // 15 BE
+    // 16-23 00000110
+    // 24-27 EP
+    // 28-30 EC
+    // 31 0
+    reg_config: u32 = 0,
+
+    // Contains physical address read by most recent Load Linked Instruction
+    // For diagnostics
+    reg_ll_addr: u32 = 0,
+
+    reg_TagLo: u32 = 0,
+    reg_TagHi: u32 = 0,
+
+    pub fn init(allocator: std.mem.Allocator) !Cp0 {
+        const registers = try allocator.alloc(u32, 32);
+        @memset(registers, 0);
+
+        // Simulating PIF Rom
+        registers[1] = 0x1F;
+        registers[12] = 0x34000000;
+        // registers[12] = 0x70400004;
+        registers[15] = 0x00000B00;
+        registers[16] = 0x0006E463;
+
+        return Cp0{
             .registers = registers,
-            .allocator = allocator,
         };
     }
 
-    pub fn deinit(self: *Cop0) void {
-        self.allocator.free(self.registers);
+    pub fn deinit(self: *Cp0, allocator: std.mem.Allocator) void {
+        allocator.free(self.registers);
+    }
+
+    fn coldReset(self: *Cp0) void {
+        self.reg_random = RANDOM_UPPER_LIMIT;
+        self.reg_wired = 0;
+        // TODO: might need to change
+        self.reg_config = 0b00000000000011100110010001100000;
     }
 
     // Generate random number in range wired <= value <= 31 every time random is read
