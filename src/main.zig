@@ -75,6 +75,8 @@ const N64 = struct {
 
     fn bootProcess(self: *N64) void {
         self.cpu.bus = &self.bus;
+        self.cpu.cp0 = &self.cp0;
+
         self.bus.rsp = &self.rsp;
 
         @memcpy(self.rsp.DMEM, self.bus.rom[0..0x1000]);
@@ -129,13 +131,20 @@ pub fn main() !void {
     n64.bootProcess();
     n64.cp0.registers[3] = 3;
 
+    // for (0..1000) |i| {
+    //     print("{X} ", .{n64.rsp.DMEM[i]});
+    //     if (i % 8 == 0) {
+    //         print("\n", .{});
+    //     }
+    // }
+
     defer n64.deinit(allocator);
     n64.run() catch |err| {
         print("{}\n", .{err});
     };
 
-    print("Reg {d} {x} \n", .{ 22, n64.cpu.readRegister(22) });
-    print("Reg {d} {x} \n", .{ 29, n64.cpu.readRegister(29) });
+    print("Reg {d} {X} \n", .{ 22, n64.cpu.readRegister(22) });
+    print("Reg {d} {X} \n", .{ 29, n64.cpu.readRegister(29) });
 
     print("{d}\n", .{n64.bus.rom[100]});
     print("{d}\n", .{n64.cpu.bus.rom[100]});

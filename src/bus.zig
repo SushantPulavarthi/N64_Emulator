@@ -57,7 +57,7 @@ pub const Bus = struct {
     pub fn read32(self: *Bus, address: u64) u32 {
         switch (address) {
             0x0400_0000...0x0400_0FFF => return self.rsp.read(address - 0x0400_0000, u32),
-            else => panic("Unhandled address: {x}\n", .{address}),
+            else => panic("Unhandled address: {X}\n", .{address}),
         }
     }
 
@@ -65,7 +65,7 @@ pub const Bus = struct {
         switch (address) {
             // Both rsp DMEM and IMEM
             0x0400_0000...0x0400_1FFF => return self.rsp.read(address - 0x0400_0000, T),
-            else => panic("Unhandled address: {x}\n", .{address}),
+            else => panic("Unhandled address: {X}\n", .{address}),
         }
     }
 

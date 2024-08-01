@@ -45,10 +45,9 @@ pub const Rsp = struct {
             else => panic("Non valid type {}", .{type}),
         };
         const relAddr = if (addr > 1000) addr - 1000 else addr;
-        var data = std.mem.readInt(T, @ptrCast(self.DMEM[relAddr .. relAddr + count]), .big);
-        print("Data: {x}\n", .{data});
-        data = @byteSwap(data);
-        print("Data: {x}\n", .{data});
-        return data;
+        // for (0..4) |i| {
+        //     print("{X}\n", .{self.DMEM[relAddr + i]});
+        // }
+        return std.mem.readInt(T, @ptrCast(self.DMEM[relAddr .. relAddr + count]), .big);
     }
 };

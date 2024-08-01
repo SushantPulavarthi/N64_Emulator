@@ -4,6 +4,8 @@ const assert = std.debug.assert;
 const panic = std.debug.panic;
 
 const Bus = @import("bus.zig").Bus;
+const Cp0 = @import("cp0.zig").Cp0;
+const Instructions = @import("instructions.zig");
 
 const TLBEntry = struct {};
 
@@ -35,6 +37,7 @@ pub const Cpu = struct {
     loadDelay: u64 = 0,
 
     bus: *Bus = undefined,
+    cp0: *Cp0 = undefined,
 
     pub fn init(allocator: std.mem.Allocator) !Cpu {
         const reg_gpr = try allocator.alloc(u64, 32);
@@ -61,12 +64,7 @@ pub const Cpu = struct {
 
     fn handleOpcode(self: *Cpu, opcode: u32) void {
         print("Opcode Recieved: {x:0>8}\n", .{opcode});
-        switch (opcode) {
-            else => {
-                print("Unhandled Opcode {x:0>8}\n", .{opcode});
-                panic("Unhandled Opcode {b:0>32}\n", .{opcode});
-            },
-        }
+        Instructions.decodeInstruction(self, opcode);
         self.PC += 4;
     }
 
@@ -87,14 +85,14 @@ pub const Cpu = struct {
             0xC000_0000...0xDFFF_FFFF => undefined,
             // KSEG3 TLB
             0xE000_0000...0xFFFF_FFFF => undefined,
-            else => panic("Unrecognized Virtual Address: {x}\n", .{address}),
+            else => panic("Unrecognized Virtual Address: {X}\n", .{address}),
         };
     }
 
     pub fn emulator_loop(self: *Cpu) void {
-        print("PC: {x}\n", .{self.PC});
+        print("PC: {X}\n", .{self.PC});
         const physAddr = self.virtualToPhysical(self.PC);
-        print("PhysAddr: {x}\n", .{physAddr});
+        print("PhysAddr: {X}\n", .{physAddr});
         const opcode = self.bus.read(physAddr, u32);
         self.handleOpcode(opcode);
     }
