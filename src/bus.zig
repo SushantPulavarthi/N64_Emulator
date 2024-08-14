@@ -1,8 +1,17 @@
 const std = @import("std");
 const print = std.debug.print;
 const assert = std.debug.assert;
-const panic = std.debug.panic;
 
+const warn = std.log.warn;
+const info = std.log.info;
+const panic = std.debug.panic;
+const logging = true;
+
+fn log(comptime format: []const u8, args: anytype) void {
+    if (logging) {
+        info(format, args);
+    }
+}
 const RAM_SIZE = 4 * 1024 * 1024;
 const ROM_SIZE = 80000;
 
@@ -54,14 +63,15 @@ pub const Bus = struct {
     // 0x1FD0_0000 0x7FFF_FFFF Cartridge Domain 1 Address 3
     // 0x8000_0000 0xFFFF_FFFF Unknown Unknown?
 
-    pub fn read32(self: *Bus, address: u64) u32 {
-        switch (address) {
-            0x0400_0000...0x0400_0FFF => return self.rsp.read(address - 0x0400_0000, u32),
-            else => panic("Unhandled address: {X}\n", .{address}),
-        }
-    }
+    // pub fn read32(self: *Bus, address: u64) u32 {
+    //     switch (address) {
+    //         0x0400_0000...0x0400_0FFF => return self.rsp.read(address - 0x0400_0000, u32),
+    //         else => panic("Unhandled address: {X}\n", .{address}),
+    //     }
+    // }
 
     pub fn read(self: *Bus, address: u64, comptime T: type) T {
+        log("Reading from address: {X}\n", .{address});
         switch (address) {
             // Both rsp DMEM and IMEM
             0x0400_0000...0x0400_1FFF => return self.rsp.read(address - 0x0400_0000, T),
@@ -69,11 +79,26 @@ pub const Bus = struct {
         }
     }
 
-    pub fn write8() !void {}
-    pub fn write16() !void {}
-    pub fn write32() !void {}
-    pub fn write64() !void {}
-
+    pub fn write8(self: *Bus, address: u64, value: u8) void {
+        _ = self; // autofix
+        _ = address; // autofix
+        _ = value; // autofix
+    }
+    pub fn write16(self: *Bus, address: u64, value: u16) void {
+        _ = self; // autofix
+        _ = address; // autofix
+        _ = value; // autofix
+    }
+    pub fn write32(self: *Bus, address: u64, value: u32) void {
+        _ = self; // autofix
+        _ = address; // autofix
+        _ = value; // autofix
+    }
+    pub fn write64(self: *Bus, address: u64, value: u64) void {
+        _ = self; // autofix
+        _ = address; // autofix
+        _ = value; // autofix
+    }
     pub fn init(allocator: std.mem.Allocator, romPath: []const u8) !Bus {
         const ram = try allocator.alloc(u8, RAM_SIZE);
         errdefer allocator.free(ram);

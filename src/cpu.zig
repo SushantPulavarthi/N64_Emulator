@@ -5,9 +5,32 @@ const panic = std.debug.panic;
 
 const Bus = @import("bus.zig").Bus;
 const Cp0 = @import("cp0.zig").Cp0;
+const Cp1 = @import("cp1.zig").Cp1;
 const Instructions = @import("instructions.zig");
 
-const TLBEntry = struct {};
+const TLBEntry = packed struct {
+    pagemask: packed struct {
+        mask: u12,
+    },
+    entry_hi: packed struct {
+        r: u2,
+        vpn2: u27,
+        g: u1,
+        asid: u8,
+    },
+    entry_lo0: packed struct {
+        pfn: u20,
+        c: u3,
+        d: u1,
+        v: u1,
+    },
+    entry_lo1: packed struct {
+        pfn: u20,
+        c: u3,
+        d: u1,
+        v: u1,
+    },
+};
 
 // 64 bit MIPS r4300i chip
 pub const Cpu = struct {
@@ -22,12 +45,13 @@ pub const Cpu = struct {
 
     // Todo: Can be configured to use 32 or 64 bit addresses
     PC: u64 = 0,
+    nextPC: u64,
 
     // Multiply and Divide registers
     HI: u64 = 0,
     LO: u64 = 0,
 
-    TLBEntries: [32]TLBEntry = undefined,
+    TLBEntries: [32]TLBEntry,
 
     // Load / Link Register
     LLBit: u1 = 0,
@@ -38,6 +62,7 @@ pub const Cpu = struct {
 
     bus: *Bus = undefined,
     cp0: *Cp0 = undefined,
+    cp1: *Cp1 = undefined,
 
     pub fn init(allocator: std.mem.Allocator) !Cpu {
         const reg_gpr = try allocator.alloc(u64, 32);
@@ -58,7 +83,8 @@ pub const Cpu = struct {
             .reg_gpr = reg_gpr,
             .reg_fpr = reg_fpr,
             .PC = 0xA400_0040,
-            // .TLBEntries = [32]TLBEntry{},
+            .nextPC = 0xA400_0044,
+            .TLBEntries = undefined,
         };
     }
 
@@ -69,12 +95,12 @@ pub const Cpu = struct {
     }
 
     // Memory accesses by main CPU, instruction fetched and load/store instructions use virtual addresses
-    fn virtualToPhysical(self: *Cpu, address: u64) u64 {
+    pub fn virtualToPhysical(self: *Cpu, address: u64) u64 {
         _ = self;
         // 32 Bit mode address translation
         // const offset =
 
-        return switch (address) {
+        return switch (address & 0xFFFF_FFFF) {
             // KUSEG TLB
             0x0000_0000...0x7FFF_FFFF => undefined,
             // KSEG0 Direct Map, cache
@@ -89,11 +115,49 @@ pub const Cpu = struct {
         };
     }
 
-    pub fn emulator_loop(self: *Cpu) void {
+    // fn tlbTranslate(self: *Cpu, vAddr: u64) u64 {
+    //     const cp0Index = self.cp0.registers[]
+    //     for (self.TLBEntries) |entry| {
+    //         if (!entry.entry_hi.g or entry.entry_hi.vpn2 != (vAddr >> 13)) {
+    //             continue;
+    //         }
+    //
+    //
+    //
+    //         switch (entry.pagemask.mask) {
+    //             0x000 => {
+    //                 // 4KB Page
+    //             },
+    //             0x003 => {
+    //                 // 16KB Page
+    //             },
+    //             0x00F => {
+    //                 // 64KB Page
+    //             },
+    //             0x03F => {
+    //                 // 256KB Page
+    //             },
+    //             0x0FF => {
+    //                 // 1MB Page
+    //             },
+    //             0x03FF => {
+    //                 // 4MB Page
+    //             },
+    //             0x0FFF => {
+    //                 // 16MB Page
+    //             },
+    //             else => {
+    //                 panic("Undefined page size");
+    //             },
+    //         }
+    //     }
+    // }
+
+    pub fn emulatorLoop(self: *Cpu) void {
         print("PC: {X}\n", .{self.PC});
-        const physAddr = self.virtualToPhysical(self.PC);
-        print("PhysAddr: {X}\n", .{physAddr});
-        const opcode = self.bus.read(physAddr, u32);
+        const opcode = self.read(self.PC, u32);
+        self.PC = self.nextPC;
+        self.nextPC +%= 4;
         self.handleOpcode(opcode);
     }
 
@@ -105,5 +169,10 @@ pub const Cpu = struct {
     // First Register, R0, is hardwired to 0
     pub fn readRegister(self: *Cpu, idx: usize) u64 {
         return if (idx == 0) 0 else self.reg_gpr[idx];
+    }
+
+    pub fn read(self: *Cpu, vAddr: u64, comptime T: type) T {
+        const pAddr = self.virtualToPhysical(vAddr);
+        return self.bus.read(pAddr, T);
     }
 };

@@ -67,7 +67,7 @@ const N64 = struct {
             //     }
             // }
 
-            self.cpu.emulator_loop();
+            self.cpu.emulatorLoop();
 
             // c.SDL_RenderPresent(self.renderer);
         }
