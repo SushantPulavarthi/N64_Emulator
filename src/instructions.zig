@@ -3,6 +3,7 @@ const print = std.debug.print;
 const assert = std.debug.assert;
 
 const Cpu = @import("cpu.zig").Cpu;
+const TLBEntry = @import("cpu.zig").TLBEntry;
 
 const warn = std.log.warn;
 const info = std.log.info;
@@ -126,27 +127,46 @@ pub fn decodeInstruction(cpu: *Cpu, instr: u32) void {
         @intFromEnum(Opcode.COP0) => {
             switch (getRs(instr)) {
                 @intFromEnum(COP.MF) => iMFC(cpu, instr, 0),
-                // @intFromEnum(COP.DM) => iDMFC0(cpu, instr),
-                // @intFromEnum(COP.CF) => {},
+                @intFromEnum(COP.DMF) => iDMFC(cpu, instr),
                 @intFromEnum(COP.MT) => iMTC(cpu, instr, 0),
-                // @intFromEnum(COP.CT) => {},
-                // @intFromEnum(COP.CO) => {},
+                // @intFromEnum(COP.DMT) => {},
+                @intFromEnum(COP.CO) => {
+                    switch (instr & 0x3F) {
+                        @intFromEnum(CP0.TLBR) => iTLBR(cpu),
+                        @intFromEnum(CP0.TLBWI) => iTLBWI(cpu),
+                        @intFromEnum(CP0.TLBWR) => iTLBWR(cpu),
+                        @intFromEnum(CP0.TLBP) => iTLBP(cpu),
+                        @intFromEnum(CP0.ERET) => iERET(cpu),
+                    }
+                },
                 else => panic("Unhandled COP0 Opcode {X}\n", .{instr}),
             }
         },
         @intFromEnum(Opcode.COP1) => {
+            // TODO: Exception if not enabled / unusable
             switch (getRs(instr)) {
                 @intFromEnum(COP.MF) => iMFC(cpu, instr, 1),
-                // @intFromEnum(COP.DM) => iDMFC(cpu, instr, 1),
+                // @intFromEnum(COP.DMF) => iDMFC(cpu, instr, 1),
                 // @intFromEnum(COP.CF) => {},
                 @intFromEnum(COP.MT) => iMTC(cpu, instr, 0),
-                // @intFromEnum(COP.CT) => {
+                // @intFromEnum(COP.DMT) => {},
+                // @intFromEnum(COP.CT) => {},
                 @intFromEnum(COP.BC) => iBC(cpu, instr),
-                // @intFromEnum(COP.CO) => {},
-                else => panic("Unhandled COP0 Opcode {X}\n", .{instr}),
+                else => panic("Unhandled COP1 Opcode {X}\n", .{instr}),
             }
         },
-        @intFromEnum(Opcode.COP2) => {},
+        // @intFromEnum(Opcode.COP2) => {
+        //     // TODO: Exception if not enabled / unusable
+        //     switch (getRs(instr)) {
+        //         @intFromEnum(COP.MF) => iMFC(cpu, instr, 1),
+        //         // @intFromEnum(COP.DMF) => iDMFC(cpu, instr, 1),
+        //         // @intFromEnum(COP.CF) => {},
+        //         @intFromEnum(COP.MT) => iMTC(cpu, instr, 0),
+        //         // @intFromEnum(COP.DMT) => {},
+        //         // @intFromEnum(COP.CT) => {},
+        //         else => panic("Unhandled COP2 Opcode {X}\n", .{instr}),
+        //     }
+        // },
         @intFromEnum(Opcode.BEQL) => iBEQL(cpu, instr),
         @intFromEnum(Opcode.BNEL) => iBNEL(cpu, instr),
         @intFromEnum(Opcode.BLEZL) => iBLEZL(cpu, instr),
@@ -737,12 +757,25 @@ fn iDIVU(cpu: *Cpu, instr: u32) void {
     }
 }
 
-// fn iDMFC0(cpu: *Cpu, instr: u32) void {
-//     // TODO: NEED TO IMPLEMENT PROPERLY
-//     const rd = getRd(instr);
-//     const rt = getRt(instr);
-//     cpu.reg_gpr[rt] = cpu.cp0.registers[rd];
-// }
+fn iDMFC(cpu: *Cpu, instr: u32, copN: usize) void {
+    // TODO: NEED TO IMPLEMENT PROPERLY
+    const rd = getRd(instr);
+    const rt = getRt(instr);
+    log("DMFC{d} {X} {X}", .{ copN, rd, rt });
+    if (copN == 0) {
+        cpu.reg_gpr[rt] = cpu.cp0.registers[rd];
+    } else {
+        if ((cpu.cp0.registers[12] >> 26) == 0) {
+            if (rd & 1 == 0) {
+                // Undefined
+            } else {
+                cpu.reg_gpr[rt] = ext32(@as(u32, @truncate(@as(u64, cpu.cp1.registers[rd - 1]) >> 32)));
+            }
+        } else {
+            cpu.reg_gpr[rt] = ext32(@as(u32, @truncate(@as(u64, cpu.cp1.registers[rd - 1]))));
+        }
+    }
+}
 
 fn iDMULT(cpu: *Cpu, instr: u32) void {
     const rs = getRs(instr);
@@ -874,9 +907,8 @@ fn iDSUBU(cpu: *Cpu, instr: u32) void {
 //     log("DSRL32 {d} {d} {d}", .{ rd, rt, sa });
 // }
 
-fn iERET(cpu: *Cpu, instr: u32) void {
+fn iERET(cpu: *Cpu) void {
     log("ERET", .{});
-    _ = instr; // autofix
     if (((cpu.cp0.registers[12] >> 2) & 1) == 1) {
         cpu.PC = cpu.cp0.registers[30];
         cpu.cp0.registers[12] &= 0xFFFFFFFD;
@@ -1111,12 +1143,19 @@ fn iLWU(cpu: *Cpu, instr: u32) void {
 fn iMFC(cpu: *Cpu, instr: u32, copN: usize) void {
     const rt = getRt(instr);
     const rd = getRd(instr);
-    log("MFCz {X} {X}", .{ rt, rd });
+    log("MFC{d} {X} {X}", .{ copN, rt, rd });
     if (copN == 0) {
         cpu.reg_gpr[rt] = ext32(cpu.cp0.registers[rd]);
     } else {
-        // TODO: NEED TO IMPLEMENT PROPERLY
-        cpu.reg_gpr[rt] = @bitCast(cpu.cp1.registers[rd]);
+        if ((cpu.cp0.registers[12] >> 26) == 0) {
+            if (rd & 1 == 0) {
+                cpu.reg_gpr[rt] = ext32(@as(u32, @truncate(@as(u64, cpu.cp1.registers[rd]))));
+            } else {
+                cpu.reg_gpr[rt] = ext32(@as(u32, @truncate(@as(u64, cpu.cp1.registers[rd - 1]) >> 32)));
+            }
+        } else {
+            cpu.reg_gpr[rt] = ext32(@as(u32, @truncate(@as(u64, cpu.cp1.registers[rd - 1]))));
+        }
     }
 }
 
@@ -1135,13 +1174,13 @@ fn iMFLO(cpu: *Cpu, instr: u32) void {
 fn iMTC(cpu: *Cpu, instr: u32, copN: usize) void {
     const rt = getRt(instr);
     const rd = getRd(instr);
+    log("MTC{d} {d} {X}", .{ copN, rt, rd });
     const data = cpu.readRegister(rt);
     if (copN == 0) {
         cpu.cp0.registers[rd] = @truncate(data);
     } else {
         cpu.cp1.registers[rd] = @bitCast(data);
     }
-    log("MTC0 {d} {d}", .{ rt, rd });
 }
 
 fn iMTHI(cpu: *Cpu, instr: u32) void {
@@ -1545,28 +1584,83 @@ fn iTGEU(cpu: *Cpu, instr: u32) void {
     }
 }
 
-fn iTLBP(cpu: *Cpu, instr: u32) void {
-    _ = cpu; // autofix
-    _ = instr; // autofix
-    panic("Unimplemented Instruction TLBP\n");
+fn iTLBP(cpu: *Cpu) void {
+    log("TLBP", .{});
+    const entryHi = cpu.cp0.registers[10];
+    for (0..32) |i| {
+        const entry = cpu.TLBEntries[i];
+        if (entry.entry_hi.vpn2 != (entryHi >> 13 & 0xFFFFFFE)) {
+            continue;
+        }
+
+        if (!entry.entry_hi.g and entry.entry_hi.asid != (entryHi & 0xFF)) {
+            continue;
+        }
+
+        cpu.cp0.registers[0] = i;
+        return;
+    }
+    cpu.cp0.registers[0] = 1 << 31;
 }
 
-fn iTLBR(cpu: *Cpu, instr: u32) void {
-    _ = cpu; // autofix
-    _ = instr; // autofix
-    panic("Unimplemented Instruction TLBR\n");
+fn iTLBR(cpu: *Cpu) void {
+    log("TLBP", .{});
+    const entry: TLBEntry = cpu.tlbEntries[cpu.cp1.registers[0]];
+    cpu.cp0.registers[5] = entry.pagemask.mask << 13;
+    var g: u64 = 0;
+    if (entry.entry_hi.g) g = 1;
+    cpu.cp0.registers[10] =
+        (@as(u64, entry.entry_hi.asid) | g << 12 |
+        @as(u64, entry.entry_hi.vpn2) << 13 | @as(u64, entry.entry_hi.r) << 62) &
+        ~(@as(u64, entry.pagemask.mask) << 13);
+    cpu.cp0.registers[3] = @as(u64, entry.entry_lo1.pfn) << 6 |
+        @as(u64, entry.entry_lo1.c) << 3 |
+        @as(u64, entry.entry_lo1.d) << 2 |
+        @as(u64, entry.entry_lo1.v) < 1 |
+        g;
+    cpu.cp0.registers[2] = @as(u64, entry.entry_lo0.pfn) << 6 |
+        @as(u64, entry.entry_lo0.c) << 3 |
+        @as(u64, entry.entry_lo0.d) << 2 |
+        @as(u64, entry.entry_lo0.v) < 1 |
+        g;
 }
 
-fn iTLBWI(cpu: *Cpu, instr: u32) void {
-    _ = cpu; // autofix
-    _ = instr; // autofix
-    panic("Unimplemented Instruction TLBWI\n");
+fn iTLBWI(cpu: *Cpu) void {
+    log("TLBWI", .{});
+    const entry: TLBEntry = cpu.tlbEntries[cpu.cp1.registers[0]];
+    const g = 1 == @as(u1, @truncate(cpu.cp0.registers[2] & cpu.cp0.registers[3]));
+    entry.pagemask.mask = @truncate(cpu.cp0.registers[5] >> 13);
+    entry.entry_hi.g = g;
+    entry.entry_hi.r = @truncate(cpu.cp0.registers[10] >> 62);
+    entry.entry_hi.vpn2 = @truncate(cpu.cp0.registers[10] >> 13);
+    entry.entry_hi.asid = @truncate(cpu.cp0.registers[10]);
+    entry.entry_lo1.d = @truncate(cpu.cp0.registers[3] >> 2);
+    entry.entry_lo1.v = @truncate(cpu.cp0.registers[3] >> 1);
+    entry.entry_lo1.c = @truncate(cpu.cp0.registers[3] >> 3);
+    entry.entry_lo1.pfn = @truncate(cpu.cp0.registers[3] >> 6);
+    entry.entry_lo0.d = @truncate(cpu.cp0.registers[3] >> 2);
+    entry.entry_lo0.v = @truncate(cpu.cp0.registers[3] >> 1);
+    entry.entry_lo0.c = @truncate(cpu.cp0.registers[3] >> 3);
+    entry.entry_lo0.pfn = @truncate(cpu.cp0.registers[3] >> 6);
 }
 
-fn iTLBWR(cpu: *Cpu, instr: u32) void {
-    _ = cpu; // autofix
-    _ = instr; // autofix
-    panic("Unimplemented Instruction TLBWR\n");
+fn iTLBWR(cpu: *Cpu) void {
+    log("TLBWI", .{});
+    const entry: TLBEntry = cpu.tlbEntries[cpu.cp1.registers[1]];
+    const g = 1 == @as(u1, @truncate(cpu.cp0.registers[2] & cpu.cp0.registers[3]));
+    entry.pagemask.mask = @truncate(cpu.cp0.registers[5] >> 13);
+    entry.entry_hi.g = g;
+    entry.entry_hi.r = @truncate(cpu.cp0.registers[10] >> 62);
+    entry.entry_hi.vpn2 = @truncate(cpu.cp0.registers[10] >> 13);
+    entry.entry_hi.asid = @truncate(cpu.cp0.registers[10]);
+    entry.entry_lo1.d = @truncate(cpu.cp0.registers[3] >> 2);
+    entry.entry_lo1.v = @truncate(cpu.cp0.registers[3] >> 1);
+    entry.entry_lo1.c = @truncate(cpu.cp0.registers[3] >> 3);
+    entry.entry_lo1.pfn = @truncate(cpu.cp0.registers[3] >> 6);
+    entry.entry_lo0.d = @truncate(cpu.cp0.registers[3] >> 2);
+    entry.entry_lo0.v = @truncate(cpu.cp0.registers[3] >> 1);
+    entry.entry_lo0.c = @truncate(cpu.cp0.registers[3] >> 3);
+    entry.entry_lo0.pfn = @truncate(cpu.cp0.registers[3] >> 6);
 }
 
 fn iTLT(cpu: *Cpu, instr: u32) void {

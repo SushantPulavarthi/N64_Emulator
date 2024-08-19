@@ -44,10 +44,10 @@ pub const Rsp = struct {
             u64 => 7,
             else => panic("Non valid type {}", .{type}),
         };
-        const relAddr = if (addr > 1000) addr - 1000 else addr;
-        // for (0..4) |i| {
-        //     print("{X}\n", .{self.DMEM[relAddr + i]});
-        // }
-        return std.mem.readInt(T, @ptrCast(self.DMEM[relAddr .. relAddr + count]), .big);
+        if (addr > 1000) {
+            return std.mem.readInt(T, @ptrCast(self.IMEM[addr - 1000 .. addr - 1000 + count]), .big);
+        } else {
+            return std.mem.readInt(T, @ptrCast(self.DMEM[addr .. addr + count]), .big);
+        }
     }
 };

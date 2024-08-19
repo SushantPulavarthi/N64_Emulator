@@ -72,10 +72,34 @@ pub const Bus = struct {
 
     pub fn read(self: *Bus, address: u64, comptime T: type) T {
         log("Reading from address: {X}\n", .{address});
+
         switch (address) {
-            // Both rsp DMEM and IMEM
+            0x0000_0000...0x03EF_FFFF => return self.readRam(address, T),
+            // 0x003F_0000...0x3F7F_FFFF => {},
+            // RSP DMEM and IMEM
             0x0400_0000...0x0400_1FFF => return self.rsp.read(address - 0x0400_0000, T),
+            0x1000_0000...0x1FBF_FFFF => return self.readRom(address - 0x1000_0000, T),
             else => panic("Unhandled address: {X}\n", .{address}),
+        }
+    }
+
+    fn readRam(self: *Bus, address: u64, comptime T: type) T {
+        switch (T) {
+            u8 => return self.ram[address],
+            u16 => return std.mem.readInt(T, self.ram[address..][0..2], .big),
+            u32 => return std.mem.readInt(T, self.ram[address..][0..4], .big),
+            u64 => return std.mem.readInt(T, self.ram[address..][0..8], .big),
+            else => panic("Unhandled type: {s}\n", .{T}),
+        }
+    }
+
+    fn readRom(self: *Bus, address: u64, comptime T: type) T {
+        switch (T) {
+            u8 => return self.rom[address],
+            u16 => return std.mem.readInt(T, self.rom[address..][0..2], .big),
+            u32 => return std.mem.readInt(T, self.rom[address..][0..4], .big),
+            u64 => return std.mem.readInt(T, self.rom[address..][0..8], .big),
+            else => panic("Unhandled type: {s}\n", .{T}),
         }
     }
 
@@ -102,8 +126,10 @@ pub const Bus = struct {
     pub fn init(allocator: std.mem.Allocator, romPath: []const u8) !Bus {
         const ram = try allocator.alloc(u8, RAM_SIZE);
         errdefer allocator.free(ram);
+        @memset(ram, 0);
         const RAMParity = try allocator.alloc(u1, RAM_SIZE);
         errdefer allocator.free(RAMParity);
+        @memset(RAMParity, 0);
 
         // Rom files are in big endian
         const romFile = try std.fs.cwd().openFile(romPath, .{});
